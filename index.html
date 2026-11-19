@@ -180,6 +180,11 @@ button{font-family:var(--font);-webkit-tap-highlight-color:transparent}
 .j-inner .choice{border:2px solid var(--p2);border-radius:4px;padding:10px;margin-top:10px}
 .j-inner .choice h3{margin-top:0}
 .j-inner .fine{font-size:7px;margin-top:8px}
+#cProgress{width:100%;height:12px;margin-top:8px;border:2px solid var(--p3);border-radius:2px;background:var(--p0);color:var(--p2);accent-color:var(--p3)}
+#cProgress[hidden]{display:none}
+#cProgress::-webkit-progress-bar{background:var(--p0)}
+#cProgress::-webkit-progress-value{background:var(--p2)}
+#cProgress::-moz-progress-bar{background:var(--p2)}
 .j-btns button:disabled{opacity:.5}
 @media (prefers-reduced-motion: reduce){.t-press,.dlg-next{animation:none}}
 </style>
@@ -241,6 +246,7 @@ button{font-family:var(--font);-webkit-tap-highlight-color:transparent}
       <label for="cAddr" class="dim">Where?</label>
       <input id="cAddr" type="text" autocomplete="off" autocapitalize="words" spellcheck="false" maxlength="80" placeholder="Postcode or town">
       <div class="j-btns"><button id="cPlace" type="button">Build from this place</button><button id="cStop" type="button" hidden>Stop</button></div>
+      <progress id="cProgress" max="4" value="0" hidden aria-label="Map server attempts"></progress>
       <p class="dim" id="cStatus" aria-live="polite"></p>
       <p class="dim fine">Zoomed out on purpose: expect your town’s shape, not every street. Public postcode and OpenStreetMap services find the area and nearby features. Only the area’s name and map sketch are kept on this device. Map data © OpenStreetMap contributors.</p>
     </div>
@@ -1050,11 +1056,11 @@ $('tGo').addEventListener('click',()=>{if(state==='title')titleGo();});
 $('tNew').addEventListener('click',()=>{if(state!=='title')return;S.init();openChooser();});
 
 /* ---------- new world chooser ---------- */
-const chooser=$('chooser'),cAddr=$('cAddr'),cStatus=$('cStatus'),cPlace=$('cPlace'),cStop=$('cStop');let chooserRet='title',placeCtl=null;
+const chooser=$('chooser'),cAddr=$('cAddr'),cStatus=$('cStatus'),cPlace=$('cPlace'),cStop=$('cStop'),cProgress=$('cProgress');let chooserRet='title',placeCtl=null;
 function openChooser(){chooserRet=state==='title'?'title':'play';state='chooser';chooser.hidden=false;$('cWarn').hidden=!(G&&(!fresh||savedGame));refreshPlaceUI();
   KEYS.forEach(k=>held[k]=0);}
 function closeChooser(){if(placeCtl){placeCtl.abort();placeCtl=null;}chooser.hidden=true;state=chooserRet;}
-function refreshPlaceUI(){cPlace.disabled=!!placeCtl;cAddr.disabled=false;if(!placeCtl)cStatus.textContent='';}
+function refreshPlaceUI(){cPlace.disabled=!!placeCtl;cAddr.disabled=false;if(!placeCtl){cStatus.textContent='';cProgress.hidden=true;cProgress.value=0;}}
 const OVERPASS=['https://overpass-api.de/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];
 async function fetchJSON(url,opt,signal,ms){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms),ab=()=>c.abort();if(signal)signal.addEventListener('abort',ab);
   try{const r=await fetch(url,Object.assign({},opt,{signal:c.signal}));if(!r.ok)throw new Error('http '+r.status);return await r.json();}
@@ -1070,13 +1076,15 @@ async function geocode(q,signal){const pc=q.replace(/\s+/g,'').toUpperCase();
   if(!Array.isArray(d)||!d.length)return null;const a=d[0].address||{};
   const regionLabel=a.town||a.city||a.municipality||a.county||d[0].name||q,home=a.neighbourhood||a.residential||a.suburb||a.quarter||'';
   return{lat:+d[0].lat,lon:+d[0].lon,label:home||a.village||regionLabel,home,regionLabel};}
-async function overpass(g,signal){const c=g.lat.toFixed(5)+','+g.lon.toFixed(5),R=6500;
-  const q=`[out:json][timeout:80];(way["waterway"~"^(river|canal|stream)$"](around:${R},${c});way["highway"~"^(motorway|trunk|primary)$"](around:${R},${c});way["natural"="coastline"](around:9000,${c}););out geom qt;`
+async function overpass(g,signal,onAttempt){const c=g.lat.toFixed(5)+','+g.lon.toFixed(5),R=6500;
+  const q=`[out:json][timeout:10];(way["waterway"~"^(river|canal|stream)$"](around:${R},${c});way["highway"~"^(motorway|trunk|primary)$"](around:${R},${c});way["natural"="coastline"](around:9000,${c}););out geom qt;`
    +`(way["natural"="water"](around:${R},${c});relation["natural"="water"](around:${R},${c});way["landuse"~"^(reservoir|forest)$"](around:${R},${c});way["natural"~"^(wood|heath)$"](around:${R},${c});relation["natural"="wood"](around:${R},${c});relation["landuse"="forest"](around:${R},${c});way["leisure"~"^(park|nature_reserve)$"](around:${R},${c}););out tags bb qt;`
    +`(node["place"~"^(city|town|village|suburb|hamlet|neighbourhood|quarter)$"](around:22000,${c});node["place"="locality"](around:4000,${c});node["natural"="peak"](around:${R},${c});nwr["historic"~"^(castle|monument|ruins|manor|archaeological_site)$"]["name"](around:6000,${c});nwr["tourism"~"^(museum|attraction|viewpoint|zoo|theme_park)$"]["name"](around:6000,${c});nwr["amenity"="place_of_worship"]["name"](around:3000,${c});node["railway"="station"]["name"](around:6000,${c}););out tags center qt;`
    +`way["highway"~"^(residential|tertiary|secondary|unclassified)$"]["name"](around:2500,${c});out tags qt 300;`;
-  let last;for(const ep of OVERPASS){try{const d=await fetchJSON(ep,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)},signal,90000);
-      if(d&&Array.isArray(d.elements)&&d.elements.length)return d;last=new Error('empty');}catch(e){if(signal.aborted)throw e;last=e;}}
+  let last;for(let i=0;i<OVERPASS.length;i++){const ep=OVERPASS[i];if(onAttempt)onAttempt(i,OVERPASS.length, new URL(ep).hostname);
+    try{const d=await fetchJSON(ep,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)},signal,12000);
+      if(d&&Array.isArray(d.elements)&&d.elements.length)return d;last=new Error('empty response');}
+    catch(e){if(signal.aborted)throw e;last=e;}}
   throw last||new Error('no map');}
 function rdp(pts,eps){if(pts.length<3)return pts;const [ax,ay]=pts[0],[bx,by]=pts[pts.length-1],dx=bx-ax,dy=by-ay,l=Math.hypot(dx,dy)||1e-9;let mi=0,md=0;
   for(let i=1;i<pts.length-1;i++){const d=Math.abs(dy*pts[i][0]-dx*pts[i][1]+bx*ay-by*ax)/l;if(d>md){md=d;mi=i;}}
@@ -1149,14 +1157,16 @@ function osmToPlace(g,d){
 async function buildPlace(){const q=cAddr.value.trim().slice(0,80);
   if(!q){cStatus.textContent='Type a postcode, town or address first.';cAddr.focus();return;}
   if(placeCtl)return;
-  placeCtl=new AbortController();const ctl=placeCtl;cPlace.disabled=true;cStop.hidden=false;let pl=null,why='offline';
+  placeCtl=new AbortController();const ctl=placeCtl;cPlace.disabled=true;cStop.hidden=false;let pl=null,why='offline';cProgress.hidden=true;cProgress.value=0;
   try{
     try{cStatus.textContent='Finding the place...';const g=await geocode(q,ctl.signal);
-      if(!g)why='notfound';else{cStatus.textContent=`Found ${g.label}. Reading the real map. This can take up to a minute...`;pl=osmToPlace(g,await overpass(g,ctl.signal));}}
+      if(!g)why='notfound';else{cProgress.hidden=false;cProgress.max=OVERPASS.length;cStatus.textContent=`Found ${g.label}. Checking ${OVERPASS.length} map servers, up to 12 seconds each...`;
+        try{const map=await overpass(g,ctl.signal,(i,total,host)=>{cProgress.value=i+1;cStatus.textContent=`Reading OpenStreetMap · server ${i+1} of ${total} (${host}), up to 12 seconds...`;});pl=osmToPlace(g,map);}
+        catch(e){if(ctl.signal.aborted)throw e;why='map';}}}
     catch(e){if(ctl.signal.aborted)throw{code:'cancelled'};}
-    if(!pl){cStatus.textContent=why==='notfound'?'Couldn’t find that place. Try a fuller postcode or a town name.':'Couldn’t reach the map servers. Check your connection and try again.';return;}
+    if(!pl){cProgress.hidden=true;cStatus.textContent=why==='notfound'?'Couldn’t find that place. Try a fuller postcode or a town name.':why==='map'?`The map servers did not respond after ${OVERPASS.length} attempts (about ${OVERPASS.length*12} seconds max). Try again later, or choose a classic world.`:'Couldn’t find the place service. Check your connection and try again.';return;}
     placeCtl=null;chooser.hidden=true;S.init();newWorld(hstr(pl.label.toLowerCase()),pl);startFresh();}
-  catch(e){cStatus.textContent=ctl.signal.aborted?'Stopped.':'Couldn’t build that map. Check your connection and try again.';}
+  catch(e){cProgress.hidden=true;cStatus.textContent=ctl.signal.aborted?'Stopped.':'Couldn’t build that map. Check your connection and try again.';}
   finally{if(placeCtl===ctl)placeCtl=null;cStop.hidden=true;cPlace.disabled=false;}}
 cPlace.addEventListener('click',buildPlace);
 cAddr.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();buildPlace();}});
