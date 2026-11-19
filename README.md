@@ -19,7 +19,9 @@ Each chapter points you towards another Echo. Find its shrine, discover which so
 Choose **New world** to start in one of two ways:
 
 - **Classic** builds a fresh, seeded fantasy landscape. Travel outward and new terrain, paths, villages, shrines, signs, caches, and encounters appear as you explore.
-- **Your place** starts with a postcode, town, or address. Nearby rivers, roads, woods, water, settlements, and landmarks are simplified into a small pixel-map, then given storybook names. The map is deliberately zoomed out: it borrows the shape of an area, not every street or building. The world keeps growing beyond the mapped patch.
+- **Your place** starts with a postcode, town, or address. Nearby rivers, roads, woods, water, settlements, and landmarks shape the pixel landscape. Familiar settlement names are kept intact; some natural features and minor names get a light storybook twist. The map borrows the shape of an area, not every street or building, and the world keeps growing beyond it.
+
+One overworld screen covers roughly 1.25 km east-to-west and 1 km north-to-south. That puts nearby neighbourhoods a screen or two away and nearby towns within a journey of several to a dozen screens. The Journal map is a regional overview, showing explored ground alongside named settlements in the surrounding area.
 
 Worlds, places, characters, and encounters are generated from the world seed as you travel. The Journal shows the explored map and points towards the current Echo.
 
@@ -49,19 +51,19 @@ The **Hearth Song** brings you home. The other songs awaken shrines and help the
 
 In the published web game, place lookup uses public services:
 
-1. A UK postcode is looked up with [postcodes.io](https://postcodes.io/). Other place names and addresses are searched with [OpenStreetMap Nominatim](https://nominatim.openstreetmap.org/).
+1. A UK postcode is located with [postcodes.io](https://postcodes.io/) and its nearby area name is resolved with [OpenStreetMap Nominatim](https://nominatim.openstreetmap.org/). Other place names and addresses are searched with Nominatim.
 2. The resolved location is used to request nearby map features from public [Overpass API](https://overpass-api.de/) servers.
-3. The game simplifies those features into a local game map and bends some real names into fantasy names.
+3. Nearby named districts and settlements are placed around the starting area and kept recognizable. The local terrain uses map features near the start; settlement names are also requested farther out so nearby towns can appear on the regional map. Some roads, waterways, landmarks, and other minor names are lightly adapted for the storybook setting.
 
-The location text you enter is sent to the lookup service, and the resolved map coordinates are sent to Overpass. The game has no account or game server: your save, place label, and simplified map sketch stay in this browser's local storage. Saves do not sync between browsers or devices. Starting a new world replaces the current save on that device.
+The location text you enter is sent to the relevant lookup service. For postcodes, the resolved coordinates are also used for a Nominatim reverse lookup to find a nearby neighbourhood name; the coordinates are sent to Overpass for the map features. The game has no account or game server: your save, place label, and simplified map sketch stay in this browser's local storage. Saves do not sync between browsers or devices. Starting a new world replaces the current save on that device.
 
 Map data is © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) and available under the [ODbL](https://opendatacommons.org/licenses/odbl/). Place lookup needs an internet connection and public map services may be slow or temporarily unavailable. Classic worlds do not need a map lookup.
 
-The ordinary web version uses the public map services above. When hosted inside an environment that provides the Claude app integration, the game may send the place text you entered to that integration for a fallback sketch if the map-service lookup is unavailable.
 
 ## Saves, sound, and offline play
 
-- Progress and preferences are saved automatically in browser storage on the device. There is no account or cloud save.
+- Progress and preferences are saved automatically in this browser on this device. When you return, choose **Continue** on the title screen. There is no account or cloud save, and the save does not sync to other devices.
+- The save uses browser storage, not cookies or a separate save file, so there is no save-consent prompt. Private browsing or clearing the browser's site data may erase it.
 - The game is a Progressive Web App. After its first load, the app shell is cached so you can play offline; **Your place** still needs a connection.
 - Music and sound effects are synthesised in the browser. Sound and palette can be changed from the Journal.
 - Use the full-screen control for a more console-like view. On mobile, you can also add the game to your home screen from the browser's install or share menu.

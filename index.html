@@ -49,8 +49,8 @@ body{height:100%;background:var(--page);overflow:hidden;font-family:var(--font);
 button{font-family:var(--font);-webkit-tap-highlight-color:transparent}
 
 .device{position:relative;height:100%;width:100%;max-width:520px;margin:0 auto;display:grid;
-  grid-template-columns:1fr auto 1fr;grid-template-rows:auto auto auto minmax(0,1fr);
-  grid-template-areas:"screen screen screen" "dpad . ab" "sys sys sys" "spk spk spk";align-content:start;
+  grid-template-columns:1fr auto 1fr;grid-template-rows:auto minmax(0,1fr) auto auto;
+  grid-template-areas:"screen screen screen" "spk spk spk" "dpad . ab" "sys sys sys";align-content:start;
   background:linear-gradient(170deg,var(--shell-hi),var(--shell) 40%);padding:12px 14px 8px;column-gap:6px}
 @media (min-width:600px) and (min-height:640px){
   .device{height:calc(100% - 28px);margin:14px auto;border-radius:20px 20px 64px 20px;
@@ -107,6 +107,7 @@ button{font-family:var(--font);-webkit-tap-highlight-color:transparent}
 .t-big{font-size:calc(var(--s)*15px);letter-spacing:calc(var(--s)*1px);text-shadow:calc(var(--s)*1px) calc(var(--s)*1px) 0 var(--p1)}
 .t-sub{font-size:calc(var(--s)*5px);color:var(--p2)}
 .t-world{font-size:calc(var(--s)*4.5px);color:var(--p2)}
+.t-save{font-size:calc(var(--s)*3.5px);color:var(--p2)}
 .t-press{font-size:calc(var(--s)*5px);animation:blink 1s steps(2) infinite}
 .t-opts{display:flex;gap:calc(var(--s)*4px);margin-top:calc(var(--s)*2px)}
 .t-opts button{font-size:calc(var(--s)*4.5px);background:var(--p3);color:var(--p0);border:none;
@@ -197,6 +198,7 @@ button{font-family:var(--font);-webkit-tap-highlight-color:transparent}
           <div class="t-big">ECHOES</div>
           <div class="t-sub">of the Endless Vale</div>
           <div class="t-world" id="tWorld"></div>
+          <div class="t-save" id="tSave"></div>
           <div class="t-press" id="tPress">PRESS START</div>
           <div class="t-opts"><button id="tGo" type="button">Start</button><button id="tNew" type="button">New world</button></div>
         </div>
@@ -216,8 +218,10 @@ button{font-family:var(--font);-webkit-tap-highlight-color:transparent}
   <div class="j-inner" id="jInner">
     <div class="j-head"><h2>Journal</h2><button id="jClose" type="button">Close</button></div>
     <div id="jBody"></div>
+    <h3>Your save</h3><p class="dim" id="jSave"></p>
     <canvas id="jmap" width="160" height="120" aria-label="Map of explored land"></canvas>
     <p class="dim" style="text-align:center;margin-top:6px">Your map grows as you explore.</p>
+    <p class="dim" id="jPlaces"></p>
     <h3>Play it like an app</h3><p class="dim" id="jApp"></p>
     <div class="j-btns"><button id="jFs" type="button">Full screen</button><button id="jPal" type="button">Palette</button><button id="jSnd" type="button">Sound</button><button id="jNew" type="button">New world</button></div>
   </div>
@@ -225,7 +229,7 @@ button{font-family:var(--font);-webkit-tap-highlight-color:transparent}
 <div class="journal" id="chooser" hidden>
   <div class="j-inner" role="dialog" aria-labelledby="cTitle">
     <div class="j-head"><h2 id="cTitle">New world</h2><button id="cClose" type="button">Cancel</button></div>
-    <p class="dim" id="cWarn" hidden>Starting a new world replaces the one you’re playing.</p>
+    <p class="dim" id="cWarn" hidden>Starting a new world replaces your current progress saved in this browser.</p>
     <div class="choice">
       <h3>Classic</h3>
       <p>A random land, different every time.</p>
@@ -238,7 +242,7 @@ button{font-family:var(--font);-webkit-tap-highlight-color:transparent}
       <input id="cAddr" type="text" autocomplete="off" autocapitalize="words" spellcheck="false" maxlength="80" placeholder="Postcode or town">
       <div class="j-btns"><button id="cPlace" type="button">Build from this place</button><button id="cStop" type="button" hidden>Stop</button></div>
       <p class="dim" id="cStatus" aria-live="polite"></p>
-      <p class="dim fine">Zoomed out on purpose: expect your town’s shape, not every street. What you type is looked up once with OpenStreetMap services (inside the Claude app, Claude sketches it instead). Only the area’s name and the map sketch are kept, on this device. Map data © OpenStreetMap contributors.</p>
+      <p class="dim fine">Zoomed out on purpose: expect your town’s shape, not every street. Public postcode and OpenStreetMap services find the area and nearby features. Only the area’s name and map sketch are kept on this device. Map data © OpenStreetMap contributors.</p>
     </div>
   </div>
 </div>
@@ -248,7 +252,7 @@ button{font-family:var(--font);-webkit-tap-highlight-color:transparent}
 const $=id=>document.getElementById(id);
 const VW=160,VH=144,GH=128,SW=10,SH=8,SPX=160,SPY=128;
 const U=4294967296;
-let SEED=1,PLACE=null,SAMPLE=null,SAMPLE_READY=false;
+let SEED=1,PLACE=null;
 
 /* ---------- hashing & noise ---------- */
 function ih(a,b,c,d){
@@ -470,7 +474,9 @@ function dstate(id){return G.dungeons[id]||(G.dungeons[id]={chest:0,key:0,unlock
 const elev=(x,y)=>fbm(x/26,y/26,1,4)*.8+fbm(x/90,y/90,2,2)*.6;
 const moist=(x,y)=>fbm(x/34+300,y/34,3,3);
 function segDist(x,y,P){let m=1e9;for(let i=0;i<P.length-1;i++){const ax=P[i][0],ay=P[i][1],dx=P[i+1][0]-ax,dy=P[i+1][1]-ay,l=dx*dx+dy*dy;let t=l?((x-ax)*dx+(y-ay)*dy)/l:0;t=t<0?0:t>1?1:t;const ex=ax+t*dx-x,ey=ay+t*dy-y,d=ex*ex+ey*ey;if(d<m)m=d;}return Math.sqrt(m);}
-const KM=40;
+// Eight map tiles per kilometre-scale unit makes one overworld screen about
+// 1.25 km across, so nearby districts and towns sit a handful of screens apart.
+const KM=8;
 function placeField(x,y){
   const kx=x/KM,ky=-y/KM,d=Math.hypot(kx,ky),w=d<6?1:d>9?0:1-(d-6)/3;
   const F={w,forest:0,park:0,heath:0,hill:0,urban:0,lake:0,sea:0,beach:0,wd:99,rd:99};if(!w)return F;
@@ -488,23 +494,6 @@ function env(x,y){let e=elev(x,y),m=moist(x,y),F=null;
   if(PLACE){F=placeField(x,y);const w=F.w;if(w){e=e*(1-w)+(e*.3+F.hill*.5)*w;m=m*(1-w)+Math.max(PLACE.clim<-.3?-1:-.2,m*.4+PLACE.clim+F.forest*.7-F.urban*.15)*w;if(F.sea)e=-.6;}}
   return{e,m,F};}
 const withThe=n=>/^the /i.test(n)?'the '+n.slice(4):'the '+n;
-function cleanPlace(d){
-  if(!d||typeof d!=='object'||Array.isArray(d)||d.unknown)return null;
-  const str=(v,n)=>String(v==null?'':v).replace(/[\u0000-\u001f<>{}]/g,'').trim().slice(0,n||28);
-  const num=(v,l)=>{v=Number(v);return isFinite(v)?Math.max(-l,Math.min(l,v)):0;};
-  const arr=(a,n)=>Array.isArray(a)?a.filter(o=>o&&typeof o==='object').slice(0,n):[];
-  const pts=a=>(Array.isArray(a)?a:[]).slice(0,14).filter(q=>Array.isArray(q)&&q.length>=2).map(q=>[num(q[0],10),num(q[1],10)]);
-  const out={label:str(d.label,40),home:str(d.home&&d.home.themed,24),climate:['temperate','arid','tropical','cold'].includes(d.climate)?d.climate:'temperate',flavour:str(d.flavour,220)};
-  if(!out.label)return null;
-  const c=d.coast;out.coast=c&&typeof c==='object'&&['n','s','e','w'].includes(c.side)?{side:c.side,dist:Math.max(.3,num(c.dist,10))}:null;
-  out.settlements=arr(d.settlements,14).map(o=>({themed:str(o.themed,24),x:num(o.x,10),y:num(o.y,10),size:Math.max(1,Math.min(3,Math.round(num(o.size,3))||1))})).filter(o=>o.themed);
-  out.rivers=arr(d.rivers,8).map(o=>({themed:str(o.themed,28),kind:['river','canal','brook'].includes(o.kind)?o.kind:'river',pts:pts(o.pts)})).filter(o=>o.pts.length>=2);
-  out.roads=arr(d.roads,10).map(o=>({pts:pts(o.pts)})).filter(o=>o.pts.length>=2);
-  const circ=(a,n,ex)=>arr(a,n).map(o=>Object.assign({themed:str(o.themed,28),x:num(o.x,10),y:num(o.y,10),r:Math.max(.1,Math.min(3,num(o.r,3)||.4))},ex?ex(o):{}));
-  out.lakes=circ(d.lakes,8);out.woods=circ(d.woods,14,o=>({kind:['wood','park','heath'].includes(o.kind)?o.kind:'wood'}));out.hills=circ(d.hills,8);
-  out.landmarks=arr(d.landmarks,12).map(o=>({themed:str(o.themed,28),x:num(o.x,10),y:num(o.y,10),kind:str(o.kind,20)})).filter(o=>o.themed);
-  out.names=(Array.isArray(d.names)?d.names:[]).slice(0,24).map(n=>str(n,22)).filter(Boolean);
-  return out;}
 function compilePlace(p){
   const line=(ps,w)=>{const P=ps.map(([x,y])=>[x*KM,-y*KM]);let a=1e9,b=-1e9,c=1e9,d=-1e9;for(const [x,y] of P){a=Math.min(a,x);b=Math.max(b,x);c=Math.min(c,y);d=Math.max(d,y);}return{P,w,bb:[a-w-4,b+w+4,c-w-4,d+w+4]};};
   const C=o=>({x:o.x*KM,y:-o.y*KM,r:o.r*KM});
@@ -512,7 +501,7 @@ function compilePlace(p){
     lakes:p.lakes.map(C),woods:p.woods.map(o=>Object.assign(C(o),{kind:o.kind})),hills:p.hills.map(C),towns:p.settlements.map(s=>C({x:s.x,y:s.y,r:.35+s.size*.35})),
     clim:{temperate:0,arid:-.42,tropical:.25,cold:.1}[p.climate]||0,screens:new Map()};
   const scr=(x,y)=>[Math.floor(x*KM/SW),Math.floor(-y*KM/SH)];
-  for(const t of p.settlements){const [sx,sy]=scr(t.x,t.y),k=sx+','+sy;if((Math.abs(sx)<=1&&Math.abs(sy)<=1)||cp.screens.has(k))continue;cp.screens.set(k,{type:'village',name:t.themed});}
+  for(const t of p.settlements){const [sx,sy]=scr(t.x,t.y),k=sx+','+sy;if((sx===0&&sy===0)||cp.screens.has(k))continue;cp.screens.set(k,{type:'village',name:t.themed,size:t.size||1,place:t.place||''});}
   for(const l of p.landmarks){let [sx,sy]=scr(l.x,l.y);if(Math.max(Math.abs(sx),Math.abs(sy))<2)sx=sx>=0?2:-2;const k=sx+','+sy;if(cp.screens.has(k))continue;cp.screens.set(k,{type:'shrine',name:l.themed});}
   return cp;}
 function biomeAt(x,y){const {e,m}=env(x,y);if(e<-.32)return'sea';if(e>.4)return'peak';if(m<-.25)return'desert';if(m>.22)return e<-.1?'swamp':'forest';return'plains';}
@@ -802,7 +791,7 @@ async function toggleFs(){try{if(fsActive()){await (document.exitFullscreen||doc
     const req=docEl.requestFullscreen||docEl.webkitRequestFullscreen;if(!req)throw 0;await req.call(docEl,{navigationUI:'hide'});
     try{await screen.orientation.lock('portrait');}catch(e){}}
   catch(e){fsHelp();}}
-function fsHelp(){const msg='Full screen is blocked inside the Claude app. Open this page’s link in Chrome or Safari and tap FULL there.';
+function fsHelp(){const msg='Full screen is not available here. Try opening this page in your browser.';
   if(state==='play')say([msg]);else if(state==='journal')$('jApp').textContent=msg;else if(state==='title')$('tWorld').textContent='Full screen works in a browser';}
 $('fsBtn').addEventListener('click',e=>{e.stopPropagation();toggleFs();});
 $('jFs').addEventListener('click',()=>toggleFs());
@@ -1000,12 +989,12 @@ function songEffect(sg){
 /* ---------- journal ---------- */
 const journal=$('journal');let newArm=0;
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function openJournal(){state='journal';save();const c=curChapter(),{dir,dist}=rel(curSx,curSy,c);
+function openJournal(){state='journal';save();updateSaveState();const c=curChapter(),{dir,dist}=rel(curSx,curSy,c);
   const done=G.chapters.filter(x=>x.done),met=Object.values(G.met).slice(-40).reverse();
   let h=`<p>${esc(actTitle(c.act))}</p><p class="dim">Chapter ${c.n}: ${c.actEnd?'The Meridian Spire':'Echo of '+esc(c.el)}</p>`;
   h+=G.layer==='d'?`<p>You’re inside ${esc((G.chapters.find(x=>x.sx===DUN.sx&&x.sy===DUN.sy)||c).shrine)}. Find the key, then the guardian.</p>`
     :`<p>Reach ${esc(c.shrine)}, ${dist} screens ${dir}, and play the ${esc(songById(c.keySong).name)} at its stone.</p>`;
-  if(G.place)h+=`<p class="dim">Shaped by ${esc(G.place.label)}.${G.place.src==='osm'?' Map data © OpenStreetMap contributors.':''}</p>`;
+  if(G.place)h+=`<p class="dim">Shaped by ${esc(G.place.label)}${G.place.region&&G.place.region!==G.place.label?' · '+esc(G.place.region):''}.${G.place.src==='osm'?' Map data © OpenStreetMap contributors.':''}</p>`;
   h+=`<p class="dim">${G.maxHp/2} hearts, ${G.pieces%4} of 4 heart pieces, ${G.shards} shards. World ${SEED}.</p>`;
   h+=`<h3>Songs</h3><ul>${G.songs.map(id=>{const s=songById(id);return`<li>${esc(s.name)} <span class="dim">${s.notes.map(n=>NOTE[n]).join(' ')}</span></li>`;}).join('')}</ul>`;
   h+=`<h3>Echoes freed</h3>${done.length?`<ul>${done.map(x=>`<li>${esc(x.sage.name)}, ${esc(x.sage.job)}<br><span class="dim">Echo of ${esc(x.el)}, ${esc(x.shrine)}</span></li>`).join('')}</ul>`:'<p class="dim">None yet. The first one is waiting.</p>'}`;
@@ -1019,6 +1008,11 @@ function drawMap(){const m=$('jmap'),c=m.getContext('2d'),p=PALS[PREF.pal].c,cw=
     c.fillStyle=b==='sea'?p[2]:b==='forest'||b==='peak'?p[2]:p[1];if(b==='sea')c.fillStyle=p[2];c.fillRect(x*cw,y*chh,cw,chh);
     if(t==='village'||t==='home'){c.fillStyle=p[3];c.fillRect(x*cw+1,y*chh+1,3,2);}
     if(t==='shrine'){c.fillStyle=p[0];c.fillRect(x*cw+2,y*chh+1,1,2);}}
+  const mapped=[];if(PLACE){mapped.push({sx:0,sy:0,name:HOME,size:3});for(const [k,v] of PLACE.screens){if(v.type==='village'&&v.name){const [sx,sy]=k.split(',').map(Number);mapped.push({sx,sy,name:v.name,size:v.size||1});}}}
+  const inView=o=>o.sx>=ox&&o.sx<ox+W&&o.sy>=oy&&o.sy<oy+H;
+  for(const o of mapped.filter(inView)){const x=(o.sx-ox)*cw,y=(o.sy-oy)*chh;c.fillStyle=p[3];const z=o.size>=3?3:2;c.fillRect(x+1,y+1,z,z);}
+  const nearby=[...new Set(mapped.filter(inView).sort((a,b)=>Math.hypot(a.sx-curSx,a.sy-curSy)-Math.hypot(b.sx-curSx,b.sy-curSy)).map(o=>o.name))].slice(0,12);
+  $('jPlaces').textContent=nearby.length?'Nearby places: '+nearby.join(' · '):'';
   const cc=curChapter(),tx=(cc.sx-ox)*cw,ty=(cc.sy-oy)*chh;c.strokeStyle=p[3];c.lineWidth=1;
   if(tx>-5&&tx<160&&ty>-4&&ty<120){c.strokeRect(tx-1.5,ty-1.5,cw+3,chh+3);}else{const a=Math.atan2(cc.sy-curSy,cc.sx-curSx);c.fillStyle=p[3];c.fillRect(80+Math.cos(a)*70-2,60+Math.sin(a)*52-2,4,4);}
   c.fillStyle=p[3];c.fillRect((W>>1)*cw+1,(H>>1)*chh,3,4);c.fillStyle=p[0];c.fillRect((W>>1)*cw+2,(H>>1)*chh+1,1,2);}
@@ -1030,20 +1024,26 @@ function cyclePalette(){PREF.pal=(PREF.pal+1)%PALS.length;applyPalette();savePre
 
 /* ---------- save / load ---------- */
 const SKEY='echoes-vale-save-v1',PKEY='echoes-vale-prefs-v1';
-function save(){if(!G)return;try{localStorage.setItem(SKEY,JSON.stringify({seed:SEED,G,pl:{x:PL.x,y:PL.y,dir:PL.dir},cur:[curSx,curSy]}));}catch(e){}}
+let saveFailed=false,savedGame=false;
+function updateSaveState(){
+  $('tSave').textContent=saveFailed?'Saving unavailable':'Progress saves on this device';
+  $('jSave').textContent=saveFailed?'This browser is blocking saves. Your progress may not carry over.':'Progress saves automatically in this browser on this device. Choose Continue when you return. It does not sync to other devices. Private browsing or clearing this site’s data may erase it.';
+}
+function save(){if(!G)return;try{localStorage.setItem(SKEY,JSON.stringify({seed:SEED,G,pl:{x:PL.x,y:PL.y,dir:PL.dir},cur:[curSx,curSy]}));savedGame=true;saveFailed=false;}catch(e){saveFailed=true;}updateSaveState();}
 function savePrefs(){try{localStorage.setItem(PKEY,JSON.stringify(PREF));}catch(e){}}
 function setSeed(seed,place){SEED=seed>>>0;PLACE=place?compilePlace(place):null;STYPE.clear();CACHE.clear();FORCE.clear();NPCC.clear();
-  HOME=(place&&place.home)||placeName(rng32(ih(0,0,555,2)));ELDER=personName(rng32(ih(1,2,3,4)));TRACKS={field:makeTrack('field'),village:makeTrack('village'),shrine:makeTrack('shrine')};S.tname='';}
+  HOME=(place&&(place.home||place.label))||placeName(rng32(ih(0,0,555,2)));ELDER=personName(rng32(ih(1,2,3,4)));TRACKS={field:makeTrack('field'),village:makeTrack('village'),shrine:makeTrack('shrine')};S.tname='';}
 function newWorld(seed,place){setSeed(seed,place);G=freshG();G.place=place||null;G.chapters.push(makeChapter(1,0,0));FORCE.add(G.chapters[0].sx+','+G.chapters[0].sy);
   placePL(0,0,4,5,1);ents=[];shots=[];parts=[];lastBanner='';enterScreen();fresh=true;$('tWorld').textContent=worldLabel();}
-function worldLabel(){return G&&G.place?'Shaped by '+G.place.label:'World '+SEED;}
-function loadSave(){let d=null;try{d=JSON.parse(localStorage.getItem(SKEY)||'null');}catch(e){}
+function worldLabel(){return G&&G.place?'Shaped by '+G.place.label+(G.place.region&&G.place.region!==G.place.label?' · '+G.place.region:''):'World '+SEED;}
+function loadSave(){let d=null,raw=null;try{raw=localStorage.getItem(SKEY);saveFailed=false;}catch(e){saveFailed=true;return false;}
+  try{d=JSON.parse(raw||'null');}catch(e){}
   if(!d||!d.G||!d.G.chapters||!d.G.chapters.length)return false;
   setSeed(d.seed,d.G.place||null);G=Object.assign(freshG(),d.G);G.chapters.forEach(c=>FORCE.add(c.sx+','+c.sy));
   if(G.layer==='d'&&G.dunId){DUN=getDungeon(G.dunId);}else{G.layer='o';G.dunId=null;DUN=null;}
   curSx=d.cur[0];curSy=d.cur[1];PL.x=d.pl.x;PL.y=d.pl.y;PL.dir=d.pl.dir||0;PIP.x=PL.x;PIP.y=PL.y-8;
   if(!boxFree(PL.x+PL.bx,PL.y+PL.by,PL.bw,PL.bh)){const [x,y]=spotIn(curSx,curSy,4,4);PL.x=x;PL.y=y;}
-  lastBanner='';enterScreen();fresh=false;$('tWorld').textContent=worldLabel();return true;}
+  lastBanner='';enterScreen();fresh=false;savedGame=true;$('tWorld').textContent=worldLabel();return true;}
 function startFresh(){$('title').hidden=true;state='play';fresh=false;prologue();}
 function titleGo(){S.init();S.setMuted(PREF.muted);$('title').hidden=true;if(fresh){startFresh();}else{state='play';banner(`Chapter ${curChapter().n}`);}}
 $('tGo').addEventListener('click',()=>{if(state==='title')titleGo();});
@@ -1051,48 +1051,29 @@ $('tNew').addEventListener('click',()=>{if(state!=='title')return;S.init();openC
 
 /* ---------- new world chooser ---------- */
 const chooser=$('chooser'),cAddr=$('cAddr'),cStatus=$('cStatus'),cPlace=$('cPlace'),cStop=$('cStop');let chooserRet='title',placeCtl=null;
-function openChooser(){chooserRet=state==='title'?'title':'play';state='chooser';chooser.hidden=false;$('cWarn').hidden=fresh&&chooserRet==='title';refreshPlaceUI();
+function openChooser(){chooserRet=state==='title'?'title':'play';state='chooser';chooser.hidden=false;$('cWarn').hidden=!(G&&(!fresh||savedGame));refreshPlaceUI();
   KEYS.forEach(k=>held[k]=0);}
 function closeChooser(){if(placeCtl){placeCtl.abort();placeCtl=null;}chooser.hidden=true;state=chooserRet;}
 function refreshPlaceUI(){cPlace.disabled=!!placeCtl;cAddr.disabled=false;if(!placeCtl)cStatus.textContent='';}
-function placeErr(code){return({not_granted:'Claude wasn’t allowed for this page, so only classic worlds work here.',sampling_disabled:'Claude isn’t available on this account, so only classic worlds work here.',
-  rate_limited:'Too many requests just now. Try again in a minute.',invalid_json:'The map came back garbled. Try again.',empty_completion:'The map came back empty. Try a town name instead.',
-  refused:'Claude couldn’t map that one. Try a town or postcode instead.',session_expired:'Sign in to Claude again, then try once more.',cancelled:'Stopped.'})[code]||'Couldn’t reach Claude just then. Try again.';}
-function placePrompt(q){return `You are sketching a real place for a cosy top-down retro adventure game. The player typed: "${q.replace(/["\\]/g,"'")}"
-
-Using only your own knowledge, describe the real geography within about 6 km of that spot. Coordinates are kilometres from the spot: x is east (+) or west (-), y is north (+) or south (-). Rough is fine; leave out anything you are unsure of rather than inventing it. If you do not recognise the place, reply {"unknown":true}.
-
-Reply with only a JSON object in this shape (leave out empty lists):
-{"label":"town or district name, never a street address",
-"home":{"real":"neighbourhood at 0,0","themed":"its game name"},
-"climate":"temperate|arid|tropical|cold",
-"coast":{"side":"n|s|e|w","dist":km} or null,
-"settlements":[{"real":"","themed":"","x":0,"y":0,"size":1}] up to 12 towns, villages or districts, size 1-3,
-"rivers":[{"real":"","themed":"","kind":"river|canal|brook","pts":[[x,y]]}] up to 6, 3-10 points each following the real course,
-"roads":[{"real":"","pts":[[x,y]]}] up to 8 main roads,
-"lakes":[{"real":"","themed":"","x":0,"y":0,"r":0.3}],
-"woods":[{"real":"","themed":"","x":0,"y":0,"r":0.5,"kind":"wood|park|heath"}],
-"hills":[{"real":"","themed":"","x":0,"y":0,"r":0.8}],
-"landmarks":[{"real":"","themed":"","x":0,"y":0,"kind":"church|castle|station|museum|..."}] up to 10 notable sites,
-"names":["15 extra themed names inspired by local streets, pubs, fields and estates"],
-"flavour":"one sentence a game narrator could open with, in the spirit of the place"}
-
-Themed names should be recognisable but bent into a cosy fantasy handheld style, never literal copies: "Hampton Court" might become "Hampcourt Keep", "River Severn" "the Severmere", "Oak Lane" "Oakenway". Keep each under 24 characters. Use one decimal place for numbers.`;}
-/* real map data: works whenever the page can reach OpenStreetMap services (self-hosted); inside Claude it falls back to Claude's sketch */
 const OVERPASS=['https://overpass-api.de/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];
 async function fetchJSON(url,opt,signal,ms){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms),ab=()=>c.abort();if(signal)signal.addEventListener('abort',ab);
   try{const r=await fetch(url,Object.assign({},opt,{signal:c.signal}));if(!r.ok)throw new Error('http '+r.status);return await r.json();}
   finally{clearTimeout(t);if(signal)signal.removeEventListener('abort',ab);}}
+async function reverseArea(lat,lon,signal){
+  try{const d=await fetchJSON('https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=16&lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon),{headers:{'Accept-Language':'en'}},signal,10000),a=d.address||{};
+    return{home:a.neighbourhood||a.residential||a.suburb||a.quarter||a.village||'',regionLabel:a.city||a.town||a.municipality||a.county||''};}
+  catch(e){if(signal.aborted)throw e;return{};}}
 async function geocode(q,signal){const pc=q.replace(/\s+/g,'').toUpperCase();
   if(/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/.test(pc)){try{const d=await fetchJSON('https://api.postcodes.io/postcodes/'+encodeURIComponent(pc),{},signal,12000);
-      if(d&&d.result)return{lat:d.result.latitude,lon:d.result.longitude,label:d.result.admin_district||d.result.parish||d.result.postcode};}catch(e){if(signal.aborted)throw e;}}
+      if(d&&d.result){const r=d.result,regionLabel=r.admin_district||r.parish||r.postcode,area=await reverseArea(r.latitude,r.longitude,signal);return{lat:r.latitude,lon:r.longitude,label:area.home||regionLabel,home:area.home||'',regionLabel:area.regionLabel||regionLabel};}}catch(e){if(signal.aborted)throw e;}}
   const d=await fetchJSON('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&q='+encodeURIComponent(q),{headers:{'Accept-Language':'en'}},signal,15000);
   if(!Array.isArray(d)||!d.length)return null;const a=d[0].address||{};
-  return{lat:+d[0].lat,lon:+d[0].lon,label:a.town||a.city||a.village||a.suburb||a.municipality||a.county||d[0].name||q};}
+  const regionLabel=a.town||a.city||a.municipality||a.county||d[0].name||q,home=a.neighbourhood||a.residential||a.suburb||a.quarter||'';
+  return{lat:+d[0].lat,lon:+d[0].lon,label:home||a.village||regionLabel,home,regionLabel};}
 async function overpass(g,signal){const c=g.lat.toFixed(5)+','+g.lon.toFixed(5),R=6500;
   const q=`[out:json][timeout:80];(way["waterway"~"^(river|canal|stream)$"](around:${R},${c});way["highway"~"^(motorway|trunk|primary)$"](around:${R},${c});way["natural"="coastline"](around:9000,${c}););out geom qt;`
    +`(way["natural"="water"](around:${R},${c});relation["natural"="water"](around:${R},${c});way["landuse"~"^(reservoir|forest)$"](around:${R},${c});way["natural"~"^(wood|heath)$"](around:${R},${c});relation["natural"="wood"](around:${R},${c});relation["landuse"="forest"](around:${R},${c});way["leisure"~"^(park|nature_reserve)$"](around:${R},${c}););out tags bb qt;`
-   +`(node["place"~"^(city|town|village|suburb|hamlet|neighbourhood|quarter)$"](around:8000,${c});node["natural"="peak"](around:${R},${c});nwr["historic"~"^(castle|monument|ruins|manor|archaeological_site)$"]["name"](around:6000,${c});nwr["tourism"~"^(museum|attraction|viewpoint|zoo|theme_park)$"]["name"](around:6000,${c});nwr["amenity"="place_of_worship"]["name"](around:3000,${c});node["railway"="station"]["name"](around:6000,${c}););out tags center qt;`
+   +`(node["place"~"^(city|town|village|suburb|hamlet|neighbourhood|quarter)$"](around:22000,${c});node["place"="locality"](around:4000,${c});node["natural"="peak"](around:${R},${c});nwr["historic"~"^(castle|monument|ruins|manor|archaeological_site)$"]["name"](around:6000,${c});nwr["tourism"~"^(museum|attraction|viewpoint|zoo|theme_park)$"]["name"](around:6000,${c});nwr["amenity"="place_of_worship"]["name"](around:3000,${c});node["railway"="station"]["name"](around:6000,${c}););out tags center qt;`
    +`way["highway"~"^(residential|tertiary|secondary|unclassified)$"]["name"](around:2500,${c});out tags qt 300;`;
   let last;for(const ep of OVERPASS){try{const d=await fetchJSON(ep,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)},signal,90000);
       if(d&&Array.isArray(d.elements)&&d.elements.length)return d;last=new Error('empty');}catch(e){if(signal.aborted)throw e;last=e;}}
@@ -1102,13 +1083,12 @@ function rdp(pts,eps){if(pts.length<3)return pts;const [ax,ay]=pts[0],[bx,by]=pt
   return md>eps?rdp(pts.slice(0,mi+1),eps).slice(0,-1).concat(rdp(pts.slice(mi),eps)):[pts[0],pts[pts.length-1]];}
 const plen=p=>{let s=0;for(let i=1;i<p.length;i++)s+=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]);return s;};
 const SUFX=['ington','borough','chester','cester','minster','bridge','worth','stead','thorpe','field','fields','street','avenue','bury','burgh','ford','well','wood','port','mouth','land','park','lane','road','close','hill','green','gate','brook','dale','mere','moor','holme','combe','haven','stoke','hurst','ridge','side','leigh','ton','ley','ham','wick','ing','by','den','cote','way','end','row'];
-const NEWS=['wick','mere','holm','fen','combe','haven','dale','moor','stead','brook','hollow','crest','wold','thorn'];
 function bendCore(n){let w=(String(n).replace(/^(the|river|saint|st\.?|great|little|old|new|north|south|east|west|upper|lower|high|mount)\s+/i,'').split(/[\s\-']+/)[0]||String(n)).replace(/[^A-Za-z]/g,'');
   let c=w;for(const x of SUFX)if(c.length>x.length+2&&c.toLowerCase().endsWith(x)){c=c.slice(0,-x.length);break;}
   if(c.length<3)c=w.slice(0,5);if(!c)c='Wend';return c.charAt(0).toUpperCase()+c.slice(1).toLowerCase();}
 function bend(n,kind){const h=hstr(String(n)+kind),c=bendCore(n),pk=a=>a[h%a.length];let r;
   switch(kind){
-    case'place':{let x=pk(NEWS);if(c.toLowerCase().endsWith(x.slice(0,2)))x=NEWS[(h>>4)%NEWS.length];r=c+x;break;}
+    case'place':{r=String(n).replace(/[\u0000-\u001f<>]/g,'').trim().slice(0,32)||c;break;}
     case'river':r='the '+c+pk(['mere','run','wash','flow','rill']);break;
     case'brook':r='the '+c+pk(['rill','beck','trickle']);break;
     case'canal':r='the '+c+' Cut';break;
@@ -1122,7 +1102,7 @@ function bend(n,kind){const h=hstr(String(n)+kind),c=bendCore(n),pk=a=>a[h%a.len
     case'museum':r='the '+c+' '+pk(['Archive','Gallery','Vault','Curiosity Hall']);break;
     case'street':r=c+pk(['way','row','end','gate','walk']);break;
     default:r='the '+c+' '+pk(['Spire','Folly','Wonder','Lantern']);}
-  return r.slice(0,26);}
+  return kind==='place'?r.slice(0,32):r.slice(0,26);}
 function osmToPlace(g,d){
   const lat0=g.lat,lon0=g.lon,kx=Math.cos(lat0*Math.PI/180)*111.32,ky=110.57,P=(la,lo)=>[+((lo-lon0)*kx).toFixed(3),+((la-lat0)*ky).toFixed(3)];
   const rivers=[],roads=[],coast=[],lakes=[],woods=[],hills=[],setts=[],lms=[],streets=new Set();
@@ -1141,7 +1121,7 @@ function osmToPlace(g,d){
       else woods.push({name:t.name||'',x,y,r:Math.min(r,3),kind:t.natural==='heath'?'heath':t.leisure==='park'?'park':'wood'});continue;}
     const ll=e.type==='node'?[e.lat,e.lon]:e.center?[e.center.lat,e.center.lon]:null;if(!ll||!t.name&&t.natural!=='peak')continue;
     const [x,y]=P(ll[0],ll[1]);
-    if(t.place)setts.push({name:t.name,x,y,size:{city:3,town:3,village:2,suburb:2,quarter:2,hamlet:1,neighbourhood:1}[t.place]||1});
+    if(t.place)setts.push({name:t.name,x,y,place:t.place,size:{city:3,town:3,village:2,suburb:2,quarter:2,hamlet:1,neighbourhood:1,locality:1}[t.place]||1});
     else if(t.natural==='peak')hills.push({themed:bend(t.name||'Knoll','hill'),x,y,r:.6});
     else{const kind=t.railway==='station'?'station':t.amenity==='place_of_worship'?'church':(t.historic==='castle'||t.historic==='manor')?'castle':t.tourism==='museum'?'museum':'other';
       lms.push({name:t.name,x,y,kind,pri:kind==='church'?1:kind==='museum'?2:kind==='other'?2:3});}}
@@ -1149,16 +1129,19 @@ function osmToPlace(g,d){
   rivers.sort((a,b)=>({river:3,canal:2,brook:1}[b.kind]-{river:3,canal:2,brook:1}[a.kind])||b.len-a.len);
   roads.sort((a,b)=>b.rank-a.rank||b.len-a.len);lakes.sort((a,b)=>b.r-a.r);woods.sort((a,b)=>b.r-a.r);
   const seen=new Set(),townsOut=[];setts.sort((a,b)=>dist(a)-dist(b));
-  const home=setts.find(s=>dist(s)<1.5&&s.size<=2)||setts[0];
-  for(const s of setts.slice().sort((a,b)=>b.size-a.size||dist(a)-dist(b))){if(s===home||seen.has(s.name)||townsOut.length>=25)continue;seen.add(s.name);townsOut.push({themed:bend(s.name,'place'),x:s.x,y:s.y,size:s.size});}
+  const homeMatch=g.home&&setts.find(s=>s.name.toLowerCase()===g.home.toLowerCase());
+  const home=homeMatch||setts.filter(s=>['suburb','neighbourhood','quarter'].includes(s.place)&&dist(s)<3).sort((a,b)=>dist(a)-dist(b))[0]
+    ||setts.filter(s=>s.place==='locality'&&dist(s)<2).sort((a,b)=>dist(a)-dist(b))[0]
+    ||setts.find(s=>['village','hamlet'].includes(s.place)&&dist(s)<1.5)||setts[0],homeMarker=g.home?homeMatch:home;
+  for(const s of setts.slice().sort((a,b)=>b.size-a.size||dist(a)-dist(b))){if(s===homeMarker||seen.has(s.name)||townsOut.length>=40)continue;seen.add(s.name);townsOut.push({themed:s.name.slice(0,32),x:s.x,y:s.y,size:s.size,place:s.place});}
   const lmOut=[];lms.sort((a,b)=>b.pri-a.pri||dist(a)-dist(b));
   for(const l of lms){if(lmOut.length>=12||seen.has(l.name)||lmOut.some(o=>Math.hypot(o.x-l.x,o.y-l.y)<.35)||(l.kind==='museum'&&lmOut.filter(o=>o.kind==='museum').length>=3))continue;seen.add(l.name);lmOut.push({themed:bend(l.name,l.kind),x:l.x,y:l.y,kind:l.kind});}
   const names=[...new Set([...streets].slice(0,120).map(n=>bend(n,'street')))].slice(0,30);
   let co=null;if(coast.length){let mx=0,my=0;for(const [x,y] of coast){mx+=x;my+=y;}mx/=coast.length;my/=coast.length;
     const side=Math.abs(mx)>Math.abs(my)?(mx>0?'e':'w'):(my>0?'n':'s'),ax=side==='e'||side==='w'?0:1,sg=side==='e'||side==='n'?1:-1;
     const ds=coast.map(q=>q[ax]*sg).filter(v=>v>0);if(ds.length)co={side,dist:Math.max(.3,Math.min(...ds))};}
-  const label=String(g.label).slice(0,40);
-  return{src:'osm',label,home:home?bend(home.name,'place'):bend(label,'place'),climate:Math.abs(lat0)<23?'tropical':Math.abs(lat0)>62?'cold':'temperate',coast:co,
+  const region=String(g.regionLabel||g.label).slice(0,40),homeName=String(g.home||(home&&home.name)||g.label).slice(0,40),label=homeName;
+  return{src:'osm',label,region:region===label?'':region,home:homeName,climate:Math.abs(lat0)<23?'tropical':Math.abs(lat0)>62?'cold':'temperate',coast:co,
     flavour:`${label}, more or less. The roads are where you left them. The names, less so.`,
     settlements:townsOut,rivers:rivers.slice(0,40).map(r=>({themed:r.name?bend(r.name,r.kind):'',kind:r.kind,pts:r.pts})),
     roads:roads.slice(0,90).map(r=>({pts:r.pts})),lakes:lakes.slice(0,25).map(l=>({themed:l.name?bend(l.name,'place'):'',x:l.x,y:l.y,r:l.r})),
@@ -1171,21 +1154,15 @@ async function buildPlace(){const q=cAddr.value.trim().slice(0,80);
     try{cStatus.textContent='Finding the place...';const g=await geocode(q,ctl.signal);
       if(!g)why='notfound';else{cStatus.textContent=`Found ${g.label}. Reading the real map. This can take up to a minute...`;pl=osmToPlace(g,await overpass(g,ctl.signal));}}
     catch(e){if(ctl.signal.aborted)throw{code:'cancelled'};}
-    if(!pl&&why!=='notfound'){await samplePromise;
-      if(SAMPLE){cStatus.textContent='Asking Claude about this place. This can take a minute...';
-        const data=await SAMPLE.json(placePrompt(q),{signal:ctl.signal,onText:({text})=>{cStatus.textContent=`Drawing the map: ${Math.min(99,Math.round(text.length/45))}%`;}});
-        if(ctl.signal.aborted)return;pl=cleanPlace(data);if(pl)pl.src='claude';else why='notfound';}}
     if(!pl){cStatus.textContent=why==='notfound'?'Couldn’t find that place. Try a fuller postcode or a town name.':'Couldn’t reach the map servers. Check your connection and try again.';return;}
     placeCtl=null;chooser.hidden=true;S.init();newWorld(hstr(pl.label.toLowerCase()),pl);startFresh();}
-  catch(e){cStatus.textContent=placeErr(e&&e.code);}
+  catch(e){cStatus.textContent=ctl.signal.aborted?'Stopped.':'Couldn’t build that map. Check your connection and try again.';}
   finally{if(placeCtl===ctl)placeCtl=null;cStop.hidden=true;cPlace.disabled=false;}}
 cPlace.addEventListener('click',buildPlace);
 cAddr.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();buildPlace();}});
 cStop.addEventListener('click',()=>{if(placeCtl){placeCtl.abort();}});
 $('cClose').addEventListener('click',closeChooser);
 $('cClassic').addEventListener('click',()=>{if(placeCtl)placeCtl.abort();chooser.hidden=true;S.init();newWorld((Math.random()*1e9)>>>0,null);startFresh();});
-const samplePromise=(async()=>{try{SAMPLE=window.claude&&typeof window.claude.use==='function'?await window.claude.use('sample'):null;}catch(e){SAMPLE=null;}SAMPLE_READY=true;})();
-
 
 /* ---------- player ---------- */
 function frontPt(){const cx=PL.x+8,cy=PL.y+12;return[cx+[0,0,-12,12][PL.dir],cy+[11,-13,0,0][PL.dir]];}
@@ -1339,7 +1316,7 @@ PREF.pal=(PREF.pal|0)%PALS.length;S.muted=!!PREF.muted;
 buildTiles();buildSprites();applyPalette();layout();
 if(loadSave()){$('tGo').textContent='Continue';$('tNew').hidden=false;}
 else{newWorld((Math.random()*1e9)>>>0);$('tGo').textContent='Start';$('tNew').hidden=false;}
-state='title';requestAnimationFrame(loop);
+state='title';updateSaveState();requestAnimationFrame(loop);
 })();
 </script>
 <script>if('serviceWorker' in navigator&&window.isSecureContext)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
